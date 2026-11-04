@@ -35,6 +35,11 @@ namespace Core::Api
         }
     }
 
+    void OpenSession()
+    {
+        Session().CreateRequest(baseUrl);
+    }
+
     void SetBaseUrl(const wxString& url)
     {
         baseUrl = url;

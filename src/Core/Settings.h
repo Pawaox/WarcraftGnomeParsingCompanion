@@ -37,6 +37,7 @@ namespace Core
         Expansion LastExpansion = DEFAULT_EXPANSION;
         bool AutoRefresh = true;
         wxString WebsiteUrl;
+        wxString UpdateUrl;
         std::vector<QueuedArchive> ArchiveQueue;
 
     private:

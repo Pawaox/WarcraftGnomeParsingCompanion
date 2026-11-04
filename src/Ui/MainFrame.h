@@ -2,6 +2,7 @@
 
 #include "Core/Settings.h"
 #include "Core/Api.h"
+#include "Core/Updater.h"
 #include "Ui/FolderPromptView.h"
 #include "Ui/LoginView.h"
 #include "Ui/LogsView.h"
@@ -9,6 +10,8 @@
 #include "Ui/SettingsView.h"
 #include "Ui/SubView.h"
 #include "Ui/TrayIcon.h"
+#include "Ui/UpdateBar.h"
+#include "Ui/UpdateRequiredView.h"
 #include "Ui/UploadView.h"
 
 #include <wx/frame.h>
@@ -33,7 +36,8 @@ namespace Ui
             PAGE_LOGS,
             PAGE_SETTINGS,
             PAGE_LOGIN,
-            PAGE_UPLOAD
+            PAGE_UPLOAD,
+            PAGE_UPDATE_REQUIRED
         };
 
         void ShowCurrentView();
@@ -52,6 +56,10 @@ namespace Ui
         void LoadProfile();
         void BeginUpload(const wxString& path);
         void OnUploaded(const std::vector<wxString>& paths);
+        void CheckForUpdate();
+        void OnReleaseFound(const Core::Updater::Release& release);
+        void StartUpdate();
+        void OnUpdateDownloaded(const wxString& error);
 
         Core::Settings& _settings;
         Core::Expansion _expansion;
@@ -60,6 +68,9 @@ namespace Ui
         std::vector<Core::Api::Guild> _guilds;
         std::vector<Core::Api::ExpansionInfo> _expansions;
         bool _showUpload = false;
+        Core::Updater::Release _release;
+        bool _updateRequired = false;
+        bool _updateDownloading = false;
 
         NavBar* _navBar = nullptr;
         wxWindow* _navLine = nullptr;
@@ -70,8 +81,12 @@ namespace Ui
         SettingsView* _settingsView = nullptr;
         LoginView* _loginView = nullptr;
         UploadView* _uploadView = nullptr;
+        UpdateRequiredView* _updateRequiredView = nullptr;
+        wxWindow* _updateLine = nullptr;
+        UpdateBar* _updateBar = nullptr;
         TrayIcon* _trayIcon = nullptr;
         wxTimer _cleanupTimer;
         wxTimer _archiveQueueTimer;
+        wxTimer _updateTimer;
     };
 }

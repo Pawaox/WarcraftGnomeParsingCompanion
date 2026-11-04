@@ -72,6 +72,7 @@ namespace Core
 
         config->Read("UI/AutoRefresh", &settings.AutoRefresh, true);
         config->Read("Website/Url", &settings.WebsiteUrl);
+        config->Read("Website/UpdateUrl", &settings.UpdateUrl);
 
         wxString entry;
         for (size_t index = 0; config->Read(QueueKey(index), &entry); ++index)

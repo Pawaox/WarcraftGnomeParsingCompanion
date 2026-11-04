@@ -1,7 +1,9 @@
+#include "Core/Api.h"
 #include "Core/AppInfo.h"
 #include "Core/AppPaths.h"
 #include "Core/Settings.h"
 #include "Core/Startup.h"
+#include "Core/Updater.h"
 #include "Ui/Fonts.h"
 #include "Ui/MainFrame.h"
 #include "Ui/Palette.h"
@@ -19,6 +21,9 @@
 
 namespace
 {
+    constexpr int UPDATE_WAIT_ATTEMPTS = 100;
+    constexpr int UPDATE_WAIT_MS = 100;
+
     wxApp::Appearance ToAppearance(Core::ThemeMode theme)
     {
         switch (theme)
@@ -37,7 +42,9 @@ public:
     bool OnInit() override;
 
 private:
-    bool StartedInTray() const;
+    bool ClaimInstance();
+    bool WaitForInstance();
+    bool HasArgument(const wxString& argument) const;
 
     std::unique_ptr<wxSingleInstanceChecker> _instanceChecker;
     Core::Settings _settings;
@@ -59,15 +66,17 @@ bool App::OnInit()
         return false;
     }
 
-    _instanceChecker = std::make_unique<wxSingleInstanceChecker>();
-    _instanceChecker->Create(wxString(Core::AppInfo::ID) + "-" + wxGetUserId(), exeDirectory);
-    if (_instanceChecker->IsAnotherRunning())
+    bool startedInTray = HasArgument(Core::AppInfo::TRAY_ARGUMENT);
+    bool claimed = HasArgument(Core::AppInfo::UPDATED_ARGUMENT) ? WaitForInstance() : ClaimInstance();
+    if (!claimed)
     {
-        if (!StartedInTray())
+        if (!startedInTray)
             wxMessageBox(wxString(Core::AppInfo::NAME) + " is already running. Open it from its tray icon.",
                 Core::AppInfo::NAME, wxOK | wxICON_INFORMATION);
         return false;
     }
+
+    Core::Updater::RemoveOldVersion();
 
     _settings = Core::Settings::Load();
     SetAppearance(ToAppearance(_settings.Theme));
@@ -77,18 +86,38 @@ bool App::OnInit()
     if (_settings.RunOnStartup)
         Core::Startup::Enable();
 
+    Core::Api::OpenSession();
+
     auto* frame = new Ui::MainFrame(_settings);
-    if (!StartedInTray() || !wxTaskBarIcon::IsAvailable())
+    if (!startedInTray || !wxTaskBarIcon::IsAvailable())
         frame->Show();
 
     return true;
 }
 
-bool App::StartedInTray() const
+bool App::ClaimInstance()
+{
+    _instanceChecker = std::make_unique<wxSingleInstanceChecker>();
+    _instanceChecker->Create(wxString(Core::AppInfo::ID) + "-" + wxGetUserId(), Core::AppPaths::ExeDirectory());
+    return !_instanceChecker->IsAnotherRunning();
+}
+
+bool App::WaitForInstance()
+{
+    for (int attempt = 0; attempt < UPDATE_WAIT_ATTEMPTS; ++attempt)
+    {
+        if (ClaimInstance())
+            return true;
+        wxMilliSleep(UPDATE_WAIT_MS);
+    }
+    return false;
+}
+
+bool App::HasArgument(const wxString& argument) const
 {
     for (int i = 1; i < argc; ++i)
     {
-        if (argv[i] == Core::AppInfo::TRAY_ARGUMENT)
+        if (argv[i] == argument)
             return true;
     }
     return false;

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(GnomeparsingCompanion VERSION 0.1.0 LANGUAGES C CXX)
+project(GnomeparsingCompanion VERSION 0.1.3 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -48,6 +48,7 @@ add_executable(GnomeparsingCompanion WIN32 MACOSX_BUNDLE
     src/Core/Settings.cpp
     src/Core/Startup.cpp
     src/Core/TokenStore.cpp
+    src/Core/Updater.cpp
     src/Core/WowFolders.cpp
     src/Ui/Controls/Button.cpp
     src/Ui/Controls/Dropdown.cpp
@@ -68,13 +69,15 @@ add_executable(GnomeparsingCompanion WIN32 MACOSX_BUNDLE
     src/Ui/Palette.cpp
     src/Ui/SettingsView.cpp
     src/Ui/TrayIcon.cpp
+    src/Ui/UpdateBar.cpp
+    src/Ui/UpdateRequiredView.cpp
     src/Ui/UploadView.cpp
 )
 
 if(WIN32)
     target_sources(GnomeparsingCompanion PRIVATE resources/app.rc)
     target_link_options(GnomeparsingCompanion PRIVATE /MANIFEST:NO)
-    target_link_libraries(GnomeparsingCompanion PRIVATE crypt32)
+    target_link_libraries(GnomeparsingCompanion PRIVATE crypt32 bcrypt)
 endif()
 
 target_include_directories(GnomeparsingCompanion PRIVATE src ${CMAKE_BINARY_DIR}/_deps/json)

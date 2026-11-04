@@ -12,7 +12,8 @@ namespace Ui::Controls
         enum class Style
         {
             Normal,
-            Primary
+            Primary,
+            Bare
         };
 
         enum class Icon

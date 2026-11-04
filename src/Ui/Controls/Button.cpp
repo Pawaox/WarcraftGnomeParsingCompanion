@@ -107,11 +107,18 @@ namespace Ui::Controls
         dc.Clear();
 
         bool primary = _style == Style::Primary;
+        bool bare = _style == Style::Bare;
         wxColour fill = primary ? palette.NavBorder : palette.InputBackground;
         wxColour border = primary ? palette.NavBorder : palette.InputBorder;
         wxColour text = primary ? wxColour(*wxWHITE) : palette.Text;
 
-        if (!IsEnabled())
+        if (bare)
+        {
+            fill = GetParent()->GetBackgroundColour();
+            if (_hovered || _pressed)
+                text = palette.Accent;
+        }
+        else if (!IsEnabled())
         {
             fill = palette.Background;
             border = palette.InputBorder;
@@ -132,11 +139,14 @@ namespace Ui::Controls
         {
             double inset = FromDIP(1);
             double radius = FromDIP(CORNER_RADIUS);
-            gc->SetPen(*wxTRANSPARENT_PEN);
-            gc->SetBrush(wxBrush(border));
-            gc->DrawRoundedRectangle(0, 0, size.x, size.y, radius);
-            gc->SetBrush(wxBrush(fill));
-            gc->DrawRoundedRectangle(inset, inset, size.x - 2 * inset, size.y - 2 * inset, radius - inset);
+            if (!bare)
+            {
+                gc->SetPen(*wxTRANSPARENT_PEN);
+                gc->SetBrush(wxBrush(border));
+                gc->DrawRoundedRectangle(0, 0, size.x, size.y, radius);
+                gc->SetBrush(wxBrush(fill));
+                gc->DrawRoundedRectangle(inset, inset, size.x - 2 * inset, size.y - 2 * inset, radius - inset);
+            }
 
             double unit = FromDIP(1);
             double centerX = size.x / 2.0;
@@ -144,8 +154,8 @@ namespace Ui::Controls
 
             if (_icon == Icon::Copy)
             {
-                double side = 9 * unit;
-                double offset = 3 * unit;
+                double side = 12 * unit;
+                double offset = 4 * unit;
                 double left = centerX - (side + offset) / 2;
                 double top = centerY - (side + offset) / 2;
 
@@ -157,9 +167,9 @@ namespace Ui::Controls
             else if (_icon == Icon::Check)
             {
                 wxGraphicsPath check = gc->CreatePath();
-                check.MoveToPoint(centerX - 5 * unit, centerY);
-                check.AddLineToPoint(centerX - 1.5 * unit, centerY + 3.5 * unit);
-                check.AddLineToPoint(centerX + 5 * unit, centerY - 4 * unit);
+                check.MoveToPoint(centerX - 7 * unit, centerY);
+                check.AddLineToPoint(centerX - 2 * unit, centerY + 5 * unit);
+                check.AddLineToPoint(centerX + 7 * unit, centerY - 5.5 * unit);
 
                 gc->SetPen(wxPen(text, FromDIP(2)));
                 gc->StrokePath(check);

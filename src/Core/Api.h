@@ -30,6 +30,7 @@ namespace Core::Api
         wxString Code;
     };
 
+    void OpenSession();
     void SetBaseUrl(const wxString& baseUrl);
     wxString LoginPageUrl();
 

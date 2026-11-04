@@ -4,6 +4,7 @@
 #include "Core/CombatLogs.h"
 #include "Core/LogArchive.h"
 #include "Core/TokenStore.h"
+#include "Core/Updater.h"
 #include "Core/WowFolders.h"
 #include "Ui/Controls/Separator.h"
 #include "Ui/Fonts.h"
@@ -26,6 +27,7 @@ namespace Ui
     {
         constexpr int CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
         constexpr int ARCHIVE_QUEUE_INTERVAL_MS = 30 * 1000;
+        constexpr int UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
         wxString ClientFolderHint(Core::Expansion expansion)
         {
@@ -72,11 +74,20 @@ namespace Ui
             [this](const std::vector<wxString>& paths) { OnUploaded(paths); });
         _book->AddPage(_loginView, wxEmptyString);
         _book->AddPage(_uploadView, wxEmptyString);
+        _updateRequiredView = new UpdateRequiredView(_book);
+        _book->AddPage(_updateRequiredView, wxEmptyString);
+
+        _updateLine = new Controls::Separator(root, wxHORIZONTAL, palette.NavBorder);
+        _updateBar = new UpdateBar(root, [this] { StartUpdate(); });
+        _updateLine->Hide();
+        _updateBar->Hide();
 
         auto* sizer = new wxBoxSizer(wxVERTICAL);
         sizer->Add(_navBar, 0, wxEXPAND);
         sizer->Add(_navLine, 0, wxEXPAND);
         sizer->Add(_book, 1, wxEXPAND);
+        sizer->Add(_updateLine, 0, wxEXPAND);
+        sizer->Add(_updateBar, 0, wxEXPAND);
         root->SetSizer(sizer);
 
         SetMinSize(FromDIP(wxSize(640, 480)));
@@ -95,6 +106,12 @@ namespace Ui
 
         if (!_settings.WebsiteUrl.empty())
             Core::Api::SetBaseUrl(_settings.WebsiteUrl);
+        if (!_settings.UpdateUrl.empty())
+            Core::Updater::SetBaseUrl(_settings.UpdateUrl);
+
+        _updateTimer.Bind(wxEVT_TIMER, [this](wxTimerEvent&) { CheckForUpdate(); });
+        _updateTimer.Start(UPDATE_CHECK_INTERVAL_MS);
+        CallAfter([this] { CheckForUpdate(); });
 
         _token = Core::TokenStore::Load();
         if (!_token.empty())
@@ -108,6 +125,7 @@ namespace Ui
     {
         _cleanupTimer.Stop();
         _archiveQueueTimer.Stop();
+        _updateTimer.Stop();
         if (_trayIcon)
         {
             _trayIcon->RemoveIcon();
@@ -128,13 +146,17 @@ namespace Ui
     void MainFrame::ShowCurrentView()
     {
         bool loggedIn = !_token.empty();
-        bool hasRoot = loggedIn && !_settings.WowRoot.empty();
+        bool hasRoot = !_updateRequired && loggedIn && !_settings.WowRoot.empty();
         _navBar->Show(hasRoot);
         _navLine->Show(hasRoot);
         _navBar->SetSelection(_expansion, _subView);
         _settingsView->SetActionsExpansion(_expansion);
 
-        if (!loggedIn)
+        if (_updateRequired)
+        {
+            _book->SetSelection(PAGE_UPDATE_REQUIRED);
+        }
+        else if (!loggedIn)
         {
             _book->SetSelection(PAGE_LOGIN);
         }
@@ -146,7 +168,7 @@ namespace Ui
         {
             _rootPrompt->SetPrompt("Select your World of Warcraft folder",
                 wxString(Core::AppInfo::NAME) + " needs your World of Warcraft folder to find your combat logs. "
-                "It's the folder that has _classic_era_, _anniversary_ or _classic_ inside.",
+                "It's the folder that has _classic_era_, _anniversary_ or _forever_ inside.",
                 wxEmptyString);
             _book->SetSelection(PAGE_ROOT_PROMPT);
         }
@@ -196,7 +218,7 @@ namespace Ui
     void MainFrame::OnRootFolderChosen(const wxString& folder)
     {
         if (!Core::WowFolders::LooksLikeWowRoot(folder)
-            && wxMessageBox("This doesn't look like a World of Warcraft folder: there's no _classic_era_, _anniversary_, _classic_ or _classic_beta_ inside it.\n\nUse it anyway?",
+            && wxMessageBox("This doesn't look like a World of Warcraft folder: there's no _classic_era_, _anniversary_ or _forever_ inside it.\n\nUse it anyway?",
                 Core::AppInfo::NAME, wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION, this) != wxYES)
             return;
 
@@ -362,6 +384,81 @@ namespace Ui
 
         for (const wxString& path : paths)
             ArchiveLog(path);
+    }
+
+    void MainFrame::CheckForUpdate()
+    {
+        std::thread([this]
+        {
+            std::optional<Core::Updater::Release> release = Core::Updater::Check();
+            if (release)
+                CallAfter([this, release = *release] { OnReleaseFound(release); });
+        }).detach();
+    }
+
+    void MainFrame::OnReleaseFound(const Core::Updater::Release& release)
+    {
+        if (_updateDownloading || _uploadView->IsBusy() || !Core::Updater::IsOlder(Core::AppInfo::VERSION, release.Latest))
+            return;
+
+        _release = release;
+        _updateBar->ShowAvailable(release.Latest);
+        _updateBar->Show();
+        _updateLine->Show();
+
+        bool required = Core::Updater::IsOlder(Core::AppInfo::VERSION, release.Minimum);
+        if (required != _updateRequired)
+        {
+            _updateRequired = required;
+            _updateRequiredView->SetVersion(release.Latest);
+            ShowCurrentView();
+        }
+
+        _book->GetParent()->Layout();
+    }
+
+    void MainFrame::StartUpdate()
+    {
+        if (_uploadView->IsBusy())
+        {
+            _updateBar->ShowProblem("Finish the upload first.");
+            return;
+        }
+
+        _updateDownloading = true;
+        _updateBar->ShowDownloading();
+
+        std::thread([this, release = _release]
+        {
+            wxString error = Core::Updater::Download(Core::Updater::Check().value_or(release));
+            CallAfter([this, error] { OnUpdateDownloaded(error); });
+        }).detach();
+    }
+
+    void MainFrame::OnUpdateDownloaded(const wxString& error)
+    {
+        _updateDownloading = false;
+
+        if (!error.empty())
+        {
+            _updateBar->ShowProblem("Update failed. " + error);
+            return;
+        }
+
+        if (_uploadView->IsBusy())
+        {
+            _updateBar->ShowProblem("Finish the upload first.");
+            return;
+        }
+
+        wxString installError = Core::Updater::Install();
+        if (!installError.empty())
+        {
+            _updateBar->ShowProblem("Update failed. " + installError);
+            return;
+        }
+
+        Close(true);
     }
 
     void MainFrame::RunArchiveCleanup()

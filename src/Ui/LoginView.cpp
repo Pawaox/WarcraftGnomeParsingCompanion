@@ -21,6 +21,7 @@ namespace Ui
     {
         constexpr int LOGO_SIZE = 96;
         constexpr int MESSAGE_WIDTH = 480;
+        constexpr int COPY_GAP = 4;
         constexpr int POLL_SECONDS = 3;
         constexpr double CODE_SIZE = 22.0;
 
@@ -48,7 +49,7 @@ namespace Ui
         _code->SetFont(Fonts::Bold(CODE_SIZE));
         _code->SetForegroundColour(palette.Accent);
 
-        _copy = new Controls::Button(this, wxEmptyString, [this] { OnCopy(); });
+        _copy = new Controls::Button(this, wxEmptyString, [this] { OnCopy(); }, Controls::Button::Style::Bare);
         _copy->SetIcon(Controls::Button::Icon::Copy);
         _copy->SetToolTip("Copy");
 
@@ -60,8 +61,9 @@ namespace Ui
         sizer->Add(title, 0, wxALIGN_CENTER_HORIZONTAL | wxBOTTOM, FromDIP(12));
         sizer->Add(_message, 0, wxALIGN_CENTER_HORIZONTAL | wxBOTTOM, FromDIP(16));
         auto* codeRow = new wxBoxSizer(wxHORIZONTAL);
+        codeRow->AddSpacer(_copy->GetBestSize().x + FromDIP(COPY_GAP));
         codeRow->Add(_code, 0, wxALIGN_CENTER_VERTICAL);
-        codeRow->Add(_copy, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(12));
+        codeRow->Add(_copy, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(COPY_GAP));
 
         sizer->Add(codeRow, 0, wxALIGN_CENTER_HORIZONTAL | wxBOTTOM, FromDIP(16));
         sizer->Add(_login, 0, wxALIGN_CENTER_HORIZONTAL);

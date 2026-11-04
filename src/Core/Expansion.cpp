@@ -38,7 +38,7 @@ namespace Core
             case Expansion::Vanilla: return { "_classic_era_" };
             case Expansion::TBC: return { "_anniversary_" };
             case Expansion::WOTLK: return {};
-            case Expansion::Forever: return { "_classic_", "_classic_beta_" };
+            case Expansion::Forever: return { "_forever_" };
         }
         return {};
     }
