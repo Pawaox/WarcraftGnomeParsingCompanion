@@ -1,10 +1,12 @@
 #pragma once
 
 #include "Core/Expansion.h"
+#include "Ui/Controls/ImageTab.h"
+#include "Ui/Controls/TextTab.h"
 #include "Ui/SubView.h"
 
 #include <wx/panel.h>
-#include <wx/tglbtn.h>
+#include <wx/sizer.h>
 
 #include <array>
 #include <functional>
@@ -19,16 +21,14 @@ namespace Ui
             std::function<void(SubView)> onSubViewSelected);
 
         void SetSelection(Core::Expansion expansion, SubView subView);
-        void FocusExpansion(Core::Expansion expansion);
 
     private:
         void AddSeparator(wxSizer* sizer);
-        wxToggleButton* AddSubViewButton(wxSizer* sizer, const wxString& label, SubView subView);
 
         std::function<void(Core::Expansion)> _onExpansionSelected;
         std::function<void(SubView)> _onSubViewSelected;
-        std::array<wxBitmapToggleButton*, Core::ALL_EXPANSIONS.size()> _expansionButtons{};
-        wxToggleButton* _logsButton = nullptr;
-        wxToggleButton* _settingsButton = nullptr;
+        std::array<Controls::ImageTab*, Core::ALL_EXPANSIONS.size()> _expansionTabs{};
+        Controls::TextTab* _logsTab = nullptr;
+        Controls::TextTab* _settingsTab = nullptr;
     };
 }

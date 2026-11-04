@@ -2,12 +2,15 @@
 #include "Core/AppPaths.h"
 #include "Core/Settings.h"
 #include "Core/Startup.h"
+#include "Ui/Fonts.h"
 #include "Ui/MainFrame.h"
+#include "Ui/Palette.h"
 
 #include <wx/app.h>
 #include <wx/config.h>
 #include <wx/image.h>
 #include <wx/msgdlg.h>
+#include <wx/settings.h>
 #include <wx/snglinst.h>
 #include <wx/taskbar.h>
 #include <wx/utils.h>
@@ -46,6 +49,7 @@ bool App::OnInit()
     SetAppDisplayName(Core::AppInfo::NAME);
     wxConfigBase::DontCreateOnDemand();
     wxImage::AddHandler(new wxPNGHandler());
+    Ui::Fonts::Register();
 
     wxString exeDirectory = Core::AppPaths::ExeDirectory();
     if (!Core::AppPaths::IsDirectoryWritable(exeDirectory))
@@ -67,6 +71,9 @@ bool App::OnInit()
 
     _settings = Core::Settings::Load();
     SetAppearance(ToAppearance(_settings.Theme));
+    Ui::Palette::Use(_settings.Theme == Core::ThemeMode::System
+        ? wxSystemSettings::GetAppearance().IsDark()
+        : _settings.Theme == Core::ThemeMode::Dark);
     if (_settings.RunOnStartup)
         Core::Startup::Enable();
 

@@ -1,6 +1,7 @@
 #include "Core/LogArchive.h"
 
 #include "Core/AppPaths.h"
+#include "Core/CombatLogs.h"
 #include "Core/WowFolders.h"
 
 #include <wx/datetime.h>
@@ -8,10 +9,6 @@
 #include <wx/filefn.h>
 #include <wx/filename.h>
 #include <wx/log.h>
-
-#ifdef __WXMSW__
-#include <wx/msw/wrapwin.h>
-#endif
 
 #include <vector>
 
@@ -59,20 +56,6 @@ namespace Core::LogArchive
             return files;
         }
 
-        bool IsInUse(const wxString& path)
-        {
-#ifdef __WXMSW__
-            HANDLE handle = ::CreateFileW(path.wc_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-            if (handle == INVALID_HANDLE_VALUE)
-                return ::GetLastError() == ERROR_SHARING_VIOLATION;
-            ::CloseHandle(handle);
-            return false;
-#else
-            wxDateTime modified = wxFileName(path).GetModificationTime();
-            return modified.IsValid() && modified > wxDateTime::Now() - wxTimeSpan::Minutes(5);
-#endif
-        }
-
         bool MoveLogFile(const wxString& source, const wxString& target)
         {
             if (wxFileExists(target))
@@ -86,6 +69,15 @@ namespace Core::LogArchive
 
             wxRemoveFile(target);
             return false;
+        }
+
+        ArchiveOutcome MoveToArchive(const wxString& path, const wxString& archiveDirectory)
+        {
+            if (CombatLogs::IsInUse(path))
+                return ArchiveOutcome::InUse;
+
+            wxString target = wxFileName(archiveDirectory, wxFileName(path).GetFullName()).GetFullPath();
+            return MoveLogFile(path, target) ? ArchiveOutcome::Moved : ArchiveOutcome::Failed;
         }
 
         int DeleteLogs(Expansion expansion, const wxString& clientFolder, const wxDateTime& olderThan)
@@ -135,19 +127,24 @@ namespace Core::LogArchive
         ArchiveResult result;
         for (const wxString& path : FindLogs(WowFolders::LogsDirectory(clientFolder)))
         {
-            if (IsInUse(path))
+            switch (MoveToArchive(path, *archiveDirectory))
             {
-                ++result.InUse;
-                continue;
+                case ArchiveOutcome::Moved: ++result.Moved; break;
+                case ArchiveOutcome::InUse: ++result.InUse; break;
+                case ArchiveOutcome::Failed: ++result.Failed; break;
             }
-
-            wxString target = wxFileName(*archiveDirectory, wxFileName(path).GetFullName()).GetFullPath();
-            if (MoveLogFile(path, target))
-                ++result.Moved;
-            else
-                ++result.Failed;
         }
         return result;
+    }
+
+    ArchiveOutcome ArchiveFile(Expansion expansion, const wxString& clientFolder, const wxString& path)
+    {
+        std::optional<wxString> archiveDirectory = PrepareArchiveDirectory(expansion, clientFolder);
+        if (!archiveDirectory)
+            return ArchiveOutcome::Failed;
+
+        wxLogNull noLog;
+        return MoveToArchive(path, *archiveDirectory);
     }
 
     int DeleteArchived(Expansion expansion, const wxString& clientFolder)

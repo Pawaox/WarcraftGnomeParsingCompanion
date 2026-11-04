@@ -8,6 +8,13 @@
 
 namespace Core::LogArchive
 {
+    enum class ArchiveOutcome
+    {
+        Moved,
+        InUse,
+        Failed
+    };
+
     struct ArchiveResult
     {
         int Moved = 0;
@@ -17,6 +24,7 @@ namespace Core::LogArchive
 
     std::optional<wxString> PrepareArchiveDirectory(Expansion expansion, const wxString& clientFolder);
     std::optional<ArchiveResult> ArchiveAll(Expansion expansion, const wxString& clientFolder);
+    ArchiveOutcome ArchiveFile(Expansion expansion, const wxString& clientFolder, const wxString& path);
     int DeleteArchived(Expansion expansion, const wxString& clientFolder);
     int DeleteArchivedOlderThan(Expansion expansion, const wxString& clientFolder, int days);
 }

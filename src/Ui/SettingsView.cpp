@@ -4,13 +4,14 @@
 #include "Core/LogArchive.h"
 #include "Core/Startup.h"
 #include "Core/WowFolders.h"
+#include "Ui/Controls/Button.h"
+#include "Ui/Fonts.h"
+#include "Ui/Palette.h"
 
-#include <wx/button.h>
 #include <wx/hyperlink.h>
 #include <wx/msgdlg.h>
-#include <wx/statline.h>
-#include <wx/stattext.h>
 #include <wx/taskbar.h>
+#include <wx/textctrl.h>
 
 #include <algorithm>
 
@@ -19,15 +20,27 @@ namespace Ui
     namespace
     {
         constexpr int MARGIN = 16;
-        constexpr int SUB_FOLDER_INDENT = 20;
-        constexpr int PARAGRAPH_WIDTH = 600;
+        constexpr int HEADING_MARGIN_TOP = 22;
+        constexpr double HEADING_SIZE = 13.0;
+        constexpr double NOTE_SIZE = 10.0;
+        constexpr int LABEL_WIDTH = 200;
+        constexpr int PARAGRAPH_WIDTH = 720;
+        constexpr int ACTION_BUTTON_HEIGHT = 36;
+        constexpr int ACTION_BUTTON_PADDING = 12;
+        constexpr int YES = 0;
+        constexpr int NO = 1;
 
-        const wxString AUTO_DELETE_ARCHIVE_LABELS[] =
+        const wxArrayString YES_NO_LABELS = { "Yes", "No" };
+        const wxArrayString AUTO_DELETE_ARCHIVE_LABELS =
         {
             "Never", "After 3 Days", "After 7 Days", "After 14 Days", "After 30 Days", "After 60 Days"
         };
+        const wxArrayString THEME_LABELS = { "System", "Light", "Dark" };
 
-        const wxString THEME_LABELS[] = { "System", "Light", "Dark" };
+        int YesNo(bool value)
+        {
+            return value ? YES : NO;
+        }
 
         void ShowMessage(wxWindow* parent, const wxString& message, long style)
         {
@@ -40,7 +53,7 @@ namespace Ui
         }
     }
 
-    SettingsView::SettingsView(wxWindow* parent, Core::Settings& settings,
+    SettingsView::SettingsView(wxWindow* parent, Core::Settings& settings, std::function<void()> onLogout,
         std::function<Core::Expansion()> currentExpansion,
         std::function<void()> onFoldersChanged)
         : wxScrolledWindow(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxVSCROLL),
@@ -48,74 +61,70 @@ namespace Ui
           _currentExpansion(std::move(currentExpansion)),
           _onFoldersChanged(std::move(onFoldersChanged))
     {
+        const Palette& palette = Palette::Current();
+        SetBackgroundColour(palette.Background);
+
         auto* sizer = new wxBoxSizer(wxVERTICAL);
 
         wxFlexGridSizer* wow = AddSection(sizer, "World of Warcraft");
-        _rootPicker = AddFolderPicker(wow, "World of Warcraft Directory", 0);
+        _rootPicker = AddFolderPicker(wow, "World of Warcraft Directory");
         _rootPicker->Bind(wxEVT_DIRPICKER_CHANGED, [this](wxFileDirPickerEvent&) { OnRootChanged(); });
         for (Core::Expansion expansion : Core::ALL_EXPANSIONS)
         {
-            wxDirPickerCtrl* picker = AddFolderPicker(wow, Core::ExpansionKey(expansion) + " Directory", SUB_FOLDER_INDENT);
+            wxDirPickerCtrl* picker = AddFolderPicker(wow, Core::ExpansionKey(expansion) + " Directory");
             picker->Bind(wxEVT_DIRPICKER_CHANGED, [this, expansion](wxFileDirPickerEvent&) { OnExpansionFolderChanged(expansion); });
             _expansionPickers[Core::ExpansionIndex(expansion)] = picker;
         }
 
         wxFlexGridSizer* cleanup = AddSection(sizer, "Combatlog Cleanup");
-        _autoArchive = new wxCheckBox(this, wxID_ANY, "Auto Archive Combat Logs");
-        _autoArchive->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) { OnAutoArchiveChanged(); });
-        AddCheckBoxRow(cleanup, _autoArchive);
-        _autoDeleteArchive = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-            static_cast<int>(std::size(AUTO_DELETE_ARCHIVE_LABELS)), AUTO_DELETE_ARCHIVE_LABELS);
-        _autoDeleteArchive->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { OnAutoDeleteArchiveChanged(); });
-        AddLabeledRow(cleanup, "Auto Delete Archive", _autoDeleteArchive);
+        _autoArchive = NewYesNo([this] { OnAutoArchiveChanged(); });
+        AddRow(cleanup, "Auto Archive Combat Logs", _autoArchive);
+        _autoDeleteArchive = new Controls::Dropdown(this, AUTO_DELETE_ARCHIVE_LABELS, [this](int) { OnAutoDeleteArchiveChanged(); });
+        AddRow(cleanup, "Auto Delete Archive", _autoDeleteArchive);
 
         wxFlexGridSizer* startup = AddSection(sizer, "Startup Settings");
-        _runOnStartup = new wxCheckBox(this, wxID_ANY, "Run on Startup");
-        _runOnStartup->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) { OnRunOnStartupChanged(); });
-        AddCheckBoxRow(startup, _runOnStartup);
-        _closeToTray = new wxCheckBox(this, wxID_ANY, "Close to Tray");
-        _closeToTray->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) { OnCloseToTrayChanged(); });
+        _runOnStartup = NewYesNo([this] { OnRunOnStartupChanged(); });
+        AddRow(startup, "Run on Startup", _runOnStartup);
+        _closeToTray = NewYesNo([this] { OnCloseToTrayChanged(); });
         _closeToTray->Enable(wxTaskBarIcon::IsAvailable());
-        AddCheckBoxRow(startup, _closeToTray);
+        AddRow(startup, "Close to Tray", _closeToTray);
 
         wxFlexGridSizer* ui = AddSection(sizer, "UI Settings");
-        _theme = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-            static_cast<int>(std::size(THEME_LABELS)), THEME_LABELS);
-        _theme->Bind(wxEVT_CHOICE, [this](wxCommandEvent&) { OnThemeChanged(); });
-        AddLabeledRow(ui, "Theme", _theme);
-        auto* themeNote = new wxStaticText(this, wxID_ANY, wxEmptyString);
-        themeNote->SetLabelText("A theme change applies the next time the app starts.");
-        ui->AddSpacer(0);
-        ui->Add(themeNote, 0, wxALIGN_CENTER_VERTICAL);
+        _theme = new Controls::Dropdown(this, THEME_LABELS, [this](int) { OnThemeChanged(); });
+        auto* themeRow = new wxBoxSizer(wxHORIZONTAL);
+        themeRow->Add(_theme, 0, wxALIGN_CENTER_VERTICAL);
+        wxStaticText* themeNote = NewText("requires restart", palette.TextInactive);
+        themeNote->SetFont(Fonts::Italic(NOTE_SIZE));
+        themeRow->Add(themeNote, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(12));
+        AddLabel(ui, "Theme");
+        ui->Add(themeRow, 0, wxALIGN_CENTER_VERTICAL);
 
-        AddHeading(sizer, "Actions");
-        AddParagraph(sizer, "These apply to the expansion selected in the bar at the top.");
+        _actionsHeading = AddHeading(sizer, "Actions");
         auto* actions = new wxBoxSizer(wxHORIZONTAL);
-        auto* archiveButton = new wxButton(this, wxID_ANY, "Archive Combat Logs");
-        archiveButton->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { OnArchiveNow(); });
-        actions->Add(archiveButton, 0, wxRIGHT, FromDIP(8));
-        auto* deleteButton = new wxButton(this, wxID_ANY, "Delete Archived Logs");
-        deleteButton->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { OnDeleteArchivedNow(); });
-        actions->Add(deleteButton);
+        AddActionButton(actions, "Archive Combat Logs", [this] { OnArchiveNow(); });
+        AddActionButton(actions, "Delete Archived Logs", [this] { OnDeleteArchivedNow(); });
         sizer->Add(actions, 0, wxLEFT | wxRIGHT | wxTOP, FromDIP(MARGIN));
+
+        AddHeading(sizer, "Account");
+        auto* account = new wxBoxSizer(wxHORIZONTAL);
+        AddActionButton(account, "Log out", std::move(onLogout));
+        sizer->Add(account, 0, wxLEFT | wxRIGHT | wxTOP, FromDIP(MARGIN));
 
         AddHeading(sizer, "Tracking");
         AddParagraph(sizer, "This app doesn't do telemetry, it doesn't use cookies, it doesn't check anything outside of the selected wow folder, except it's own settings.");
         AddParagraph(sizer, "Errors & Crashes are not sent anywhere. If this app sucks, I won't know unless you tell me.");
-        AddParagraph(sizer, "Run on Startup is the one thing that writes outside the app's own folder: it adds an entry to "
-            + Core::Startup::EntryLocation() + ", and removes it again when you turn it off.");
-        AddParagraph(sizer, "It's also opensource, you can check the code here (or ask your friendly neighbour AI to check it for you):");
-        wxString sourceUrl = Core::AppInfo::SOURCE_URL;
-        if (sourceUrl.empty())
-            AddParagraph(sizer, "(link coming soon)");
-        else
-            sizer->Add(new wxHyperlinkCtrl(this, wxID_ANY, sourceUrl, sourceUrl), 0, wxLEFT | wxRIGHT | wxTOP, FromDIP(MARGIN));
-
-        AddParagraph(sizer, wxString("Version ") + Core::AppInfo::VERSION);
+        AddParagraph(sizer, "If \"Run on Startup\" is on, this is written to registry on the PC. It is removed again if turned off.");
+        AddParagraph(sizer, "It's also opensource, you can check the code here:");
+        auto* link = new wxHyperlinkCtrl(this, wxID_ANY, Core::AppInfo::SOURCE_URL, Core::AppInfo::SOURCE_URL);
+        link->SetNormalColour(palette.Link);
+        link->SetVisitedColour(palette.Link);
+        link->SetHoverColour(palette.LinkHover);
+        sizer->Add(link, 0, wxLEFT | wxRIGHT | wxTOP, FromDIP(MARGIN));
         sizer->AddSpacer(FromDIP(MARGIN));
 
         SetSizer(sizer);
         SetScrollRate(0, FromDIP(12));
+        SetActionsExpansion(_currentExpansion());
         FitInside();
     }
 
@@ -125,23 +134,45 @@ namespace Ui
         for (Core::Expansion expansion : Core::ALL_EXPANSIONS)
             _expansionPickers[Core::ExpansionIndex(expansion)]->SetPath(_settings.ExpansionFolder(expansion));
 
-        _autoArchive->SetValue(_settings.AutoArchive);
+        _autoArchive->SetSelection(YesNo(_settings.AutoArchive));
         auto days = std::ranges::find(Core::AUTO_DELETE_ARCHIVE_DAYS, _settings.AutoDeleteArchiveDays);
         _autoDeleteArchive->SetSelection(static_cast<int>(std::distance(Core::AUTO_DELETE_ARCHIVE_DAYS.begin(), days)));
         _autoDeleteArchive->Enable(_settings.AutoArchive);
 
-        _runOnStartup->SetValue(_settings.RunOnStartup);
-        _closeToTray->SetValue(_settings.CloseToTray && wxTaskBarIcon::IsAvailable());
+        _runOnStartup->SetSelection(YesNo(_settings.RunOnStartup));
+        _closeToTray->SetSelection(YesNo(_settings.CloseToTray && wxTaskBarIcon::IsAvailable()));
         _theme->SetSelection(static_cast<int>(_settings.Theme));
     }
 
-    void SettingsView::AddHeading(wxSizer* sizer, const wxString& title)
+    void SettingsView::SetActionsExpansion(Core::Expansion expansion)
     {
-        auto* heading = new wxStaticText(this, wxID_ANY, wxEmptyString);
-        heading->SetLabelText(title);
-        heading->SetFont(GetFont().Bold().Scaled(1.15f));
+        wxString title = Core::ExpansionKey(expansion) + " Actions";
+        if (_actionsHeading->GetLabelText() == title)
+            return;
+        _actionsHeading->SetLabelText(title);
+        Layout();
+    }
+
+    wxStaticText* SettingsView::NewText(const wxString& text, const wxColour& colour)
+    {
+        auto* label = new wxStaticText(this, wxID_ANY, wxEmptyString);
+        label->SetLabelText(text);
+        label->SetForegroundColour(colour);
+        return label;
+    }
+
+    Controls::Dropdown* SettingsView::NewYesNo(std::function<void()> onChanged)
+    {
+        return new Controls::Dropdown(this, YES_NO_LABELS, [onChanged = std::move(onChanged)](int) { onChanged(); });
+    }
+
+    wxStaticText* SettingsView::AddHeading(wxSizer* sizer, const wxString& title)
+    {
+        wxStaticText* heading = NewText(title, Palette::Current().Accent);
+        heading->SetFont(Fonts::Bold(HEADING_SIZE));
+        sizer->AddSpacer(FromDIP(HEADING_MARGIN_TOP - MARGIN));
         sizer->Add(heading, 0, wxLEFT | wxRIGHT | wxTOP, FromDIP(MARGIN));
-        sizer->Add(new wxStaticLine(this), 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, FromDIP(MARGIN / 2));
+        return heading;
     }
 
     wxFlexGridSizer* SettingsView::AddSection(wxSizer* sizer, const wxString& title)
@@ -155,36 +186,46 @@ namespace Ui
 
     void SettingsView::AddParagraph(wxSizer* sizer, const wxString& text)
     {
-        auto* paragraph = new wxStaticText(this, wxID_ANY, wxEmptyString);
-        paragraph->SetLabelText(text);
+        wxStaticText* paragraph = NewText(text, Palette::Current().Text);
         paragraph->Wrap(FromDIP(PARAGRAPH_WIDTH));
         sizer->Add(paragraph, 0, wxLEFT | wxRIGHT | wxTOP, FromDIP(MARGIN));
     }
 
-    wxDirPickerCtrl* SettingsView::AddFolderPicker(wxFlexGridSizer* grid, const wxString& label, int indent)
+    void SettingsView::AddLabel(wxFlexGridSizer* grid, const wxString& label)
     {
-        auto* text = new wxStaticText(this, wxID_ANY, wxEmptyString);
-        text->SetLabelText(label);
-        grid->Add(text, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(indent));
+        wxStaticText* text = NewText(label, Palette::Current().Text);
+        text->SetMinSize(wxSize(FromDIP(LABEL_WIDTH), -1));
+        grid->Add(text, 0, wxALIGN_CENTER_VERTICAL);
+    }
+
+    wxDirPickerCtrl* SettingsView::AddFolderPicker(wxFlexGridSizer* grid, const wxString& label)
+    {
+        const Palette& palette = Palette::Current();
+        AddLabel(grid, label);
 
         auto* picker = new wxDirPickerCtrl(this, wxID_ANY, wxEmptyString, label, wxDefaultPosition, wxDefaultSize,
             wxDIRP_USE_TEXTCTRL | wxDIRP_DIR_MUST_EXIST);
+        if (wxTextCtrl* text = picker->GetTextCtrl())
+        {
+            text->SetBackgroundColour(palette.InputBackground);
+            text->SetForegroundColour(palette.InputText);
+        }
         grid->Add(picker, 1, wxEXPAND);
         return picker;
     }
 
-    void SettingsView::AddLabeledRow(wxFlexGridSizer* grid, const wxString& label, wxWindow* control)
+    void SettingsView::AddRow(wxFlexGridSizer* grid, const wxString& label, wxWindow* control)
     {
-        auto* text = new wxStaticText(this, wxID_ANY, wxEmptyString);
-        text->SetLabelText(label);
-        grid->Add(text, 0, wxALIGN_CENTER_VERTICAL);
+        AddLabel(grid, label);
         grid->Add(control, 0, wxALIGN_CENTER_VERTICAL);
     }
 
-    void SettingsView::AddCheckBoxRow(wxFlexGridSizer* grid, wxCheckBox* checkBox)
+    Controls::Button* SettingsView::AddActionButton(wxSizer* sizer, const wxString& label, std::function<void()> onClick)
     {
-        grid->Add(checkBox, 0, wxALIGN_CENTER_VERTICAL);
-        grid->AddSpacer(0);
+        auto* button = new Controls::Button(this, label, std::move(onClick));
+        button->SetMinSize(wxSize(button->GetBestSize().x + FromDIP(ACTION_BUTTON_PADDING), FromDIP(ACTION_BUTTON_HEIGHT)));
+        sizer->Add(button, 0, wxRIGHT, FromDIP(10));
+        return button;
     }
 
     void SettingsView::OnRootChanged()
@@ -207,7 +248,7 @@ namespace Ui
 
     void SettingsView::OnAutoArchiveChanged()
     {
-        bool enable = _autoArchive->GetValue();
+        bool enable = _autoArchive->GetSelection() == YES;
         if (enable)
         {
             wxString problems;
@@ -222,7 +263,7 @@ namespace Ui
             {
                 ShowMessage(this, "Auto Archive can't be turned on. Neither the Logs\\_archive folder nor an ArchivedLogs folder next to the app can be written to for:\n"
                     + problems, wxICON_ERROR);
-                _autoArchive->SetValue(false);
+                _autoArchive->SetSelection(NO);
                 return;
             }
         }
@@ -244,13 +285,13 @@ namespace Ui
 
     void SettingsView::OnRunOnStartupChanged()
     {
-        bool enable = _runOnStartup->GetValue();
+        bool enable = _runOnStartup->GetSelection() == YES;
         bool succeeded = enable ? Core::Startup::Enable() : Core::Startup::Disable();
         if (!succeeded)
         {
             ShowMessage(this, enable ? "Couldn't add the app to " + Core::Startup::EntryLocation() + "."
                 : "Couldn't remove the app from " + Core::Startup::EntryLocation() + ".", wxICON_ERROR);
-            _runOnStartup->SetValue(!enable);
+            _runOnStartup->SetSelection(YesNo(!enable));
             return;
         }
 
@@ -260,14 +301,14 @@ namespace Ui
 
     void SettingsView::OnCloseToTrayChanged()
     {
-        _settings.CloseToTray = _closeToTray->GetValue();
+        _settings.CloseToTray = _closeToTray->GetSelection() == YES;
         _settings.Save();
     }
 
     void SettingsView::OnThemeChanged()
     {
         int selection = _theme->GetSelection();
-        if (selection < 0 || selection >= static_cast<int>(std::size(THEME_LABELS)))
+        if (selection < 0 || selection >= static_cast<int>(THEME_LABELS.size()))
             return;
 
         _settings.Theme = static_cast<Core::ThemeMode>(selection);

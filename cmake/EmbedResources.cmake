@@ -6,7 +6,7 @@ function(embed_resources target)
         get_filename_component(name "${resourceFile}" NAME_WE)
         get_filename_component(extension "${resourceFile}" LAST_EXT)
         string(SUBSTRING "${extension}" 1 -1 extension)
-        set(symbol "${name}_${extension}")
+        string(MAKE_C_IDENTIFIER "${name}_${extension}" symbol)
 
         file(READ "${resourceFile}" hex HEX)
         string(LENGTH "${hex}" hexLength)

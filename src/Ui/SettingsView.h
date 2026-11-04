@@ -1,12 +1,13 @@
 #pragma once
 
 #include "Core/Settings.h"
+#include "Ui/Controls/Dropdown.h"
 
-#include <wx/checkbox.h>
-#include <wx/choice.h>
+#include "Ui/Controls/Button.h"
 #include <wx/filepicker.h>
 #include <wx/scrolwin.h>
 #include <wx/sizer.h>
+#include <wx/stattext.h>
 
 #include <array>
 #include <functional>
@@ -16,19 +17,23 @@ namespace Ui
     class SettingsView : public wxScrolledWindow
     {
     public:
-        SettingsView(wxWindow* parent, Core::Settings& settings,
+        SettingsView(wxWindow* parent, Core::Settings& settings, std::function<void()> onLogout,
             std::function<Core::Expansion()> currentExpansion,
             std::function<void()> onFoldersChanged);
 
         void Reload();
+        void SetActionsExpansion(Core::Expansion expansion);
 
     private:
-        void AddHeading(wxSizer* sizer, const wxString& title);
+        wxStaticText* NewText(const wxString& text, const wxColour& colour);
+        Controls::Dropdown* NewYesNo(std::function<void()> onChanged);
+        wxStaticText* AddHeading(wxSizer* sizer, const wxString& title);
         wxFlexGridSizer* AddSection(wxSizer* sizer, const wxString& title);
         void AddParagraph(wxSizer* sizer, const wxString& text);
-        wxDirPickerCtrl* AddFolderPicker(wxFlexGridSizer* grid, const wxString& label, int indent);
-        void AddLabeledRow(wxFlexGridSizer* grid, const wxString& label, wxWindow* control);
-        void AddCheckBoxRow(wxFlexGridSizer* grid, wxCheckBox* checkBox);
+        void AddLabel(wxFlexGridSizer* grid, const wxString& label);
+        wxDirPickerCtrl* AddFolderPicker(wxFlexGridSizer* grid, const wxString& label);
+        void AddRow(wxFlexGridSizer* grid, const wxString& label, wxWindow* control);
+        Controls::Button* AddActionButton(wxSizer* sizer, const wxString& label, std::function<void()> onClick);
 
         void OnRootChanged();
         void OnExpansionFolderChanged(Core::Expansion expansion);
@@ -46,10 +51,11 @@ namespace Ui
 
         wxDirPickerCtrl* _rootPicker = nullptr;
         std::array<wxDirPickerCtrl*, Core::ALL_EXPANSIONS.size()> _expansionPickers{};
-        wxCheckBox* _autoArchive = nullptr;
-        wxChoice* _autoDeleteArchive = nullptr;
-        wxCheckBox* _runOnStartup = nullptr;
-        wxCheckBox* _closeToTray = nullptr;
-        wxChoice* _theme = nullptr;
+        Controls::Dropdown* _autoArchive = nullptr;
+        Controls::Dropdown* _autoDeleteArchive = nullptr;
+        Controls::Dropdown* _runOnStartup = nullptr;
+        Controls::Dropdown* _closeToTray = nullptr;
+        Controls::Dropdown* _theme = nullptr;
+        wxStaticText* _actionsHeading = nullptr;
     };
 }

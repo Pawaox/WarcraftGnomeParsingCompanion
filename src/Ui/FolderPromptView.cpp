@@ -1,6 +1,9 @@
 #include "Ui/FolderPromptView.h"
 
-#include <wx/button.h>
+#include "Ui/Controls/Button.h"
+#include "Ui/Fonts.h"
+#include "Ui/Palette.h"
+
 #include <wx/dirdlg.h>
 #include <wx/sizer.h>
 
@@ -15,13 +18,17 @@ namespace Ui
         : wxPanel(parent),
           _onFolderChosen(std::move(onFolderChosen))
     {
+        const Palette& palette = Palette::Current();
+        SetBackgroundColour(palette.Background);
+
         _title = new wxStaticText(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxALIGN_CENTER_HORIZONTAL);
-        _title->SetFont(GetFont().Bold().Scaled(1.4f));
+        _title->SetFont(Fonts::Bold(15.0));
+        _title->SetForegroundColour(palette.Title);
 
         _message = new wxStaticText(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxALIGN_CENTER_HORIZONTAL);
+        _message->SetForegroundColour(palette.Text);
 
-        auto* chooseButton = new wxButton(this, wxID_ANY, "Choose folder...");
-        chooseButton->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { OnChooseFolder(); });
+        auto* chooseButton = new Controls::Button(this, "Choose folder...", [this] { OnChooseFolder(); }, Controls::Button::Style::Primary);
 
         auto* sizer = new wxBoxSizer(wxVERTICAL);
         sizer->AddStretchSpacer();

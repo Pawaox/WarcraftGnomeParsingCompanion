@@ -11,6 +11,8 @@ namespace Core
 {
     namespace
     {
+        constexpr wxChar QUEUE_SEPARATOR = '|';
+
         std::unique_ptr<wxFileConfig> OpenConfig()
         {
             return std::make_unique<wxFileConfig>(wxEmptyString, wxEmptyString, AppPaths::SettingsFile(),
@@ -41,6 +43,11 @@ namespace Core
         {
             return "Wow/" + ExpansionKey(expansion);
         }
+
+        wxString QueueKey(size_t index)
+        {
+            return wxString::Format("ArchiveQueue/%zu", index);
+        }
     }
 
     Settings Settings::Load()
@@ -63,6 +70,17 @@ namespace Core
         settings.Theme = ThemeFromString(config->Read("UI/Theme", wxEmptyString));
         settings.LastExpansion = ExpansionFromKey(config->Read("UI/LastExpansion", wxEmptyString)).value_or(DEFAULT_EXPANSION);
 
+        config->Read("UI/AutoRefresh", &settings.AutoRefresh, true);
+        config->Read("Website/Url", &settings.WebsiteUrl);
+
+        wxString entry;
+        for (size_t index = 0; config->Read(QueueKey(index), &entry); ++index)
+        {
+            std::optional<Expansion> expansion = ExpansionFromKey(entry.BeforeFirst(QUEUE_SEPARATOR));
+            if (expansion)
+                settings.ArchiveQueue.push_back({ *expansion, entry.AfterFirst(QUEUE_SEPARATOR) });
+        }
+
         return settings;
     }
 
@@ -80,6 +98,11 @@ namespace Core
         config->Write("Startup/CloseToTray", CloseToTray);
         config->Write("UI/Theme", ThemeToString(Theme));
         config->Write("UI/LastExpansion", ExpansionKey(LastExpansion));
+        config->Write("UI/AutoRefresh", AutoRefresh);
+
+        config->DeleteGroup("ArchiveQueue");
+        for (size_t index = 0; index < ArchiveQueue.size(); ++index)
+            config->Write(QueueKey(index), ExpansionKey(ArchiveQueue[index].LogExpansion) + QUEUE_SEPARATOR + ArchiveQueue[index].Path);
 
         config->Flush();
     }
@@ -92,5 +115,10 @@ namespace Core
     const wxString& Settings::ExpansionFolder(Expansion expansion) const
     {
         return _expansionFolders[ExpansionIndex(expansion)];
+    }
+
+    bool Settings::IsArchiveQueued(const wxString& path) const
+    {
+        return std::ranges::any_of(ArchiveQueue, [&path](const QueuedArchive& queued) { return queued.Path == path; });
     }
 }

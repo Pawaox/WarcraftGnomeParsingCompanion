@@ -1,16 +1,24 @@
 #include "Ui/NavBar.h"
 
+#include "Core/AppInfo.h"
+#include "Ui/Controls/Separator.h"
+#include "Ui/Fonts.h"
 #include "Ui/Images.h"
+#include "Ui/Palette.h"
 
-#include <wx/sizer.h>
 #include <wx/statbmp.h>
-#include <wx/statline.h>
+#include <wx/stattext.h>
 
 namespace Ui
 {
     namespace
     {
         constexpr int ICON_SIZE = 32;
+        constexpr int SEPARATOR_LENGTH = 24;
+        constexpr int SEPARATOR_MARGIN = 16;
+        constexpr int TAB_GAP = 6;
+        constexpr int EDGE_MARGIN = 12;
+        constexpr double VERSION_FONT_SIZE = 9.0;
     }
 
     NavBar::NavBar(wxWindow* parent,
@@ -20,23 +28,32 @@ namespace Ui
           _onExpansionSelected(std::move(onExpansionSelected)),
           _onSubViewSelected(std::move(onSubViewSelected))
     {
-        auto* sizer = new wxBoxSizer(wxHORIZONTAL);
+        SetBackgroundColour(Palette::Current().NavBackground);
 
-        sizer->Add(new wxStaticBitmap(this, wxID_ANY, Images::Logo(ICON_SIZE)), 0, wxALIGN_CENTER_VERTICAL | wxALL, FromDIP(6));
+        auto* sizer = new wxBoxSizer(wxHORIZONTAL);
+        sizer->AddSpacer(FromDIP(EDGE_MARGIN));
+        sizer->Add(new wxStaticBitmap(this, wxID_ANY, Images::Logo(ICON_SIZE)), 0, wxALIGN_CENTER_VERTICAL | wxTOP | wxBOTTOM, FromDIP(8));
         AddSeparator(sizer);
 
         for (Core::Expansion expansion : Core::ALL_EXPANSIONS)
         {
-            auto* button = new wxBitmapToggleButton(this, wxID_ANY, Images::ExpansionIcon(expansion, ICON_SIZE));
-            button->SetToolTip(Core::ExpansionName(expansion));
-            button->Bind(wxEVT_TOGGLEBUTTON, [this, expansion](wxCommandEvent&) { _onExpansionSelected(expansion); });
-            sizer->Add(button, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
-            _expansionButtons[Core::ExpansionIndex(expansion)] = button;
+            auto* tab = new Controls::ImageTab(this, Images::ExpansionIcon(expansion, ICON_SIZE), Core::ExpansionName(expansion),
+                [this, expansion] { _onExpansionSelected(expansion); });
+            sizer->Add(tab, 0, wxALIGN_BOTTOM | wxRIGHT, FromDIP(TAB_GAP));
+            _expansionTabs[Core::ExpansionIndex(expansion)] = tab;
         }
 
         AddSeparator(sizer);
-        _logsButton = AddSubViewButton(sizer, "Logs", SubView::Logs);
-        _settingsButton = AddSubViewButton(sizer, "Settings", SubView::Settings);
+        _logsTab = new Controls::TextTab(this, "Logs", [this] { _onSubViewSelected(SubView::Logs); });
+        sizer->Add(_logsTab, 0, wxALIGN_BOTTOM | wxRIGHT, FromDIP(TAB_GAP));
+        _settingsTab = new Controls::TextTab(this, "Settings", [this] { _onSubViewSelected(SubView::Settings); });
+        sizer->Add(_settingsTab, 0, wxALIGN_BOTTOM);
+
+        sizer->AddStretchSpacer();
+        auto* version = new wxStaticText(this, wxID_ANY, wxString("v") + Core::AppInfo::VERSION);
+        version->SetForegroundColour(Palette::Current().Accent);
+        version->SetFont(Fonts::Italic(VERSION_FONT_SIZE));
+        sizer->Add(version, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(EDGE_MARGIN + 4));
 
         SetSizer(sizer);
     }
@@ -44,28 +61,15 @@ namespace Ui
     void NavBar::SetSelection(Core::Expansion expansion, SubView subView)
     {
         for (Core::Expansion candidate : Core::ALL_EXPANSIONS)
-            _expansionButtons[Core::ExpansionIndex(candidate)]->SetValue(candidate == expansion);
+            _expansionTabs[Core::ExpansionIndex(candidate)]->SetSelected(candidate == expansion);
 
-        _logsButton->SetValue(subView == SubView::Logs);
-        _settingsButton->SetValue(subView == SubView::Settings);
-    }
-
-    void NavBar::FocusExpansion(Core::Expansion expansion)
-    {
-        _expansionButtons[Core::ExpansionIndex(expansion)]->SetFocus();
+        _logsTab->SetSelected(subView == SubView::Logs);
+        _settingsTab->SetSelected(subView == SubView::Settings);
     }
 
     void NavBar::AddSeparator(wxSizer* sizer)
     {
-        sizer->Add(new wxStaticLine(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLI_VERTICAL),
-            0, wxEXPAND | wxTOP | wxBOTTOM | wxLEFT | wxRIGHT, FromDIP(6));
-    }
-
-    wxToggleButton* NavBar::AddSubViewButton(wxSizer* sizer, const wxString& label, SubView subView)
-    {
-        auto* button = new wxToggleButton(this, wxID_ANY, label);
-        button->Bind(wxEVT_TOGGLEBUTTON, [this, subView](wxCommandEvent&) { _onSubViewSelected(subView); });
-        sizer->Add(button, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
-        return button;
+        sizer->Add(new Controls::Separator(this, wxVERTICAL, Palette::Current().NavBorder, SEPARATOR_LENGTH),
+            0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, FromDIP(SEPARATOR_MARGIN));
     }
 }
